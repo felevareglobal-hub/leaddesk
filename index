@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LeadDesk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#EEF2F4;--panel:#fff;--ink:#13242D;--mute:#62747E;--line:#D9E1E5;--accent:#0E6B66;--open:#2B6CB0;--won:#2F855A;--lost:#B94A48;--r:8px}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "Instrument Sans",system-ui,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hide{display:none!important}
+.btn{background:var(--accent);color:#fff;border:0;border-radius:var(--r);padding:9px 16px;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--lost);border:1px solid var(--line)}
+.field{display:block;margin-bottom:12px}
+.field span{display:block;font-size:13px;color:var(--mute);margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+#auth{max-width:380px;margin:12vh auto;padding:28px;background:var(--panel);border-radius:12px;border:1px solid var(--line)}
+#auth h1{margin:0 0 4px;font-size:26px}
+#auth p{margin:0 0 20px;color:var(--mute)}
+#auth .btn{width:100%}
+.swap{margin-top:14px;text-align:center;color:var(--mute);font-size:14px}
+.swap a{color:var(--accent);cursor:pointer;font-weight:600}
+.err{color:var(--lost);font-size:14px;min-height:20px;margin-bottom:8px}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--ink);color:#fff}
+header b{font-size:18px}
+header span{opacity:.7;margin-left:10px;font-size:14px}
+header button{background:transparent;border:1px solid #ffffff55;color:#fff;border-radius:var(--r);padding:6px 12px}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
+.pipe{display:flex;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:16px}
+.pipe button{flex:1;background:transparent;border:0;border-right:1px solid var(--line);padding:12px 10px 10px;text-align:left;border-bottom:4px solid transparent}
+.pipe button:last-child{border-right:0}
+.pipe button b{display:block;font-size:22px;line-height:1.1}
+.pipe button small{color:var(--mute)}
+.pipe button.on{background:#F4F8F8;border-bottom-color:var(--c,var(--accent))}
+.k-open{--c:var(--open)}.k-won{--c:var(--won)}.k-lost{--c:var(--lost)}
+.bar{display:flex;gap:10px;margin-bottom:12px}
+.bar input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+.list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+.row{display:grid;grid-template-columns:2.2fr 1.2fr 1.2fr 1fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);border-left:4px solid var(--c,var(--line));cursor:pointer}
+.row:last-child{border-bottom:0}
+.row:hover{background:#F8FAFB}
+.row .n{font-weight:600}
+.row .s{color:var(--mute);font-size:13px}
+.row select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
+.empty{padding:36px 16px;text-align:center;color:var(--mute)}
+dialog{border:0;border-radius:12px;padding:22px;width:min(460px,94vw);box-shadow:0 12px 40px #0004}
+dialog::backdrop{background:#13242D88}
+dialog h2{margin:0 0 14px;font-size:19px}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+.acts .sp{margin-right:auto}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:var(--r)}
+@media(max-width:640px){.row{grid-template-columns:1fr 1fr}.pipe{overflow-x:auto}.pipe button{min-width:96px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<section id="auth" class="hide">
+  <h1>LeadDesk</h1>
+  <p id="authSub">Sign in to your workspace.</p>
+  <label class="field hide" id="bizWrap"><span>Business name</span><input id="biz" autocomplete="organization"></label>
+  <label class="field"><span>Email</span><input id="email" type="email" autocomplete="email"></label>
+  <label class="field"><span>Password</span><input id="pass" type="password" autocomplete="current-password"></label>
+  <div class="err" id="authErr"></div>
+  <button class="btn" id="authBtn">Sign in</button>
+  <div class="swap" id="swap"></div>
+</section>
+
+<div id="app" class="hide">
+  <header><div><b>LeadDesk</b><span id="wsName"></span></div><button id="logout">Sign out</button></header>
+  <main>
+    <div class="pipe" id="pipe"></div>
+    <div class="bar">
+      <input id="q" type="search" placeholder="Search by name, phone, email or source">
+      <button class="btn" id="add">Add lead</button>
+    </div>
+    <div class="list" id="list"></div>
+  </main>
+</div>
+
+<dialog id="dlg">
+  <h2 id="dlgTitle">Add lead</h2>
+  <label class="field"><span>Name</span><input id="f_name"></label>
+  <label class="field"><span>Phone</span><input id="f_phone" type="tel"></label>
+  <label class="field"><span>Email</span><input id="f_email" type="email"></label>
+  <label class="field"><span>Source</span><input id="f_source" list="srcs"></label>
+  <datalist id="srcs"><option>Website</option><option>Referral</option><option>WhatsApp</option><option>Walk-in</option><option>Instagram</option><option>Phone call</option></datalist>
+  <label class="field"><span>Stage</span><select id="f_stage"></select></label>
+  <label class="field"><span>Notes</span><textarea id="f_notes" rows="3"></textarea></label>
+  <div class="err" id="dlgErr"></div>
+  <div class="acts">
+    <button class="btn danger sp hide" id="del">Delete lead</button>
+    <button class="btn ghost" id="cancel">Cancel</button>
+    <button class="btn" id="save">Save lead</button>
+  </div>
+</dialog>
+<div id="toast" class="hide"></div>
+
+<script>
+const SUPABASE_URL = 'https://mbmrzyhcjivrbiaayiah.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_NS2LViVIr9dN1UJ_Qjralg_fPdxOnHA';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const S = { ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
+const $ = id => document.getElementById(id);
+const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c]);
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hide');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => t.classList.add('hide'), 2200);
+}
+
+/* ---------- Auth ---------- */
+function setMode(m) {
+  S.mode = m;
+  const signup = m === 'signup';
+  $('bizWrap').classList.toggle('hide', !signup);
+  $('authSub').textContent = signup ? 'Create a workspace for your business.' : 'Sign in to your workspace.';
+  $('authBtn').textContent = signup ? 'Create workspace' : 'Sign in';
+  $('pass').autocomplete = signup ? 'new-password' : 'current-password';
+  $('swap').innerHTML = signup
+    ? 'Already have a workspace? <a id="swapLink">Sign in</a>'
+    : 'New here? <a id="swapLink">Create a workspace</a>';
+  $('swapLink').onclick = () => setMode(signup ? 'login' : 'signup');
+  $('authErr').textContent = '';
+}
+
+async function submitAuth() {
+  const email = $('email').value.trim(), password = $('pass').value, biz = $('biz').value.trim();
+  $('authErr').textContent = '';
+  if (!email || !password) { $('authErr').textContent = 'Enter your email and password.'; return; }
+  if (S.mode === 'signup') {
+    if (!biz) { $('authErr').textContent = 'Enter your business name.'; return; }
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { business: biz } } });
+    if (error) { $('authErr').textContent = error.message; return; }
+    if (!data.session) { $('authErr').textContent = 'Check your email to confirm your account, then sign in.'; setMode('login'); return; }
+  } else {
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { $('authErr').textContent = error.message; return; }
+  }
+  boot();
+}
+
+/* ---------- Data ---------- */
+async function loadWorkspace(user) {
+  let { data: m } = await sb.from('ld_members').select('workspace_id, ld_workspaces(name)').limit(1);
+  if (!m || !m.length) {
+    const name = (user.user_metadata && user.user_metadata.business) || 'My business';
+    const { error } = await sb.rpc('ld_create_workspace', { wname: name });
+    if (error) { toast(error.message); return false; }
+    ({ data: m } = await sb.from('ld_members').select('workspace_id, ld_workspaces(name)').limit(1));
+  }
+  S.ws = m[0].workspace_id;
+  S.wsName = m[0].ld_workspaces ? m[0].ld_workspaces.name : '';
+  return true;
+}
+
+async function loadData() {
+  const [st, ld] = await Promise.all([
+    sb.from('ld_stages').select('*').eq('workspace_id', S.ws).order('position'),
+    sb.from('ld_leads').select('*').eq('workspace_id', S.ws).order('created_at', { ascending: false })
+  ]);
+  if (st.error || ld.error) { toast((st.error || ld.error).message); return; }
+  S.stages = st.data;
+  S.leads = ld.data;
+}
+
+/* ---------- Render ---------- */
+const stageOf = id => S.stages.find(s => s.id === id);
+
+function renderPipe() {
+  const count = id => S.leads.filter(l => l.stage_id === id).length;
+  let h = '<button data-f="all" class="' + (S.filter === 'all' ? 'on' : '') + '"><b>' + S.leads.length + '</b><small>All leads</small></button>';
+  S.stages.forEach(s => {
+    h += '<button data-f="' + s.id + '" class="k-' + s.kind + (S.filter === s.id ? ' on' : '') + '"><b>' + count(s.id) + '</b><small>' + esc(s.name) + '</small></button>';
+  });
+  $('pipe').innerHTML = h;
+  $('pipe').querySelectorAll('button').forEach(b => b.onclick = () => { S.filter = b.dataset.f; render(); });
+}
+
+function renderList() {
+  const q = S.q.toLowerCase();
+  const rows = S.leads.filter(l => {
+    if (S.filter !== 'all' && l.stage_id !== S.filter) return false;
+    if (!q) return true;
+    return [l.name, l.phone, l.email, l.source].some(v => (v || '').toLowerCase().includes(q));
+  });
+  if (!rows.length) {
+    $('list').innerHTML = '<div class="empty">' + (S.leads.length ? 'No leads match this view.' : 'No leads yet. Select Add lead to enter your first one.') + '</div>';
+    return;
+  }
+  $('list').innerHTML = rows.map(l => {
+    const st = stageOf(l.stage_id);
+    const opts = S.stages.map(s => '<option value="' + s.id + '"' + (s.id === l.stage_id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+    return '<div class="row k-' + (st ? st.kind : 'open') + '" data-id="' + l.id + '">' +
+      '<div><div class="n">' + esc(l.name) + '</div><div class="s">' + esc(l.phone || l.email || 'No contact details') + '</div></div>' +
+      '<div class="s">' + esc(l.source || 'No source') + '</div>' +
+      '<div><select data-stage="' + l.id + '" aria-label="Stage">' + opts + '</select></div>' +
+      '<div class="s">' + new Date(l.created_at).toLocaleDateString() + '</div></div>';
+  }).join('');
+  $('list').querySelectorAll('.row').forEach(r => r.onclick = () => openLead(r.dataset.id));
+  $('list').querySelectorAll('select[data-stage]').forEach(s => {
+    s.onclick = e => e.stopPropagation();
+    s.onchange = () => changeStage(s.dataset.stage, s.value);
+  });
+}
+
+function render() {
+  $('wsName').textContent = S.wsName;
+  renderPipe();
+  renderList();
+}
+
+/* ---------- Lead actions ---------- */
+async function changeStage(id, stageId) {
+  const { error } = await sb.from('ld_leads').update({ stage_id: stageId }).eq('id', id);
+  if (error) { toast(error.message); return; }
+  const l = S.leads.find(x => x.id === id);
+  if (l) l.stage_id = stageId;
+  render();
+  toast('Stage updated');
+}
+
+function openLead(id) {
+  S.editId = id || null;
+  const l = id ? S.leads.find(x => x.id === id) : null;
+  $('dlgTitle').textContent = l ? 'Edit lead' : 'Add lead';
+  $('f_stage').innerHTML = S.stages.map(s => '<option value="' + s.id + '">' + esc(s.name) + '</option>').join('');
+  $('f_name').value = l ? l.name : '';
+  $('f_phone').value = l ? l.phone || '' : '';
+  $('f_email').value = l ? l.email || '' : '';
+  $('f_source').value = l ? l.source || '' : '';
+  $('f_notes').value = l ? l.notes || '' : '';
+  $('f_stage').value = l ? l.stage_id : (S.stages[0] ? S.stages[0].id : '');
+  $('del').classList.toggle('hide', !l);
+  $('dlgErr').textContent = '';
+  $('dlg').showModal();
+}
+
+async function saveLead() {
+  const name = $('f_name').value.trim();
+  if (!name) { $('dlgErr').textContent = 'Enter the lead\u2019s name.'; return; }
+  const row = {
+    name, phone: $('f_phone').value.trim() || null, email: $('f_email').value.trim() || null,
+    source: $('f_source').value.trim() || null, stage_id: $('f_stage').value, notes: $('f_notes').value.trim() || null
+  };
+  const res = S.editId
+    ? await sb.from('ld_leads').update(row).eq('id', S.editId)
+    : await sb.from('ld_leads').insert({ ...row, workspace_id: S.ws });
+  if (res.error) { $('dlgErr').textContent = res.error.message; return; }
+  $('dlg').close();
+  await loadData();
+  render();
+  toast('Lead saved');
+}
+
+async function deleteLead() {
+  if (!S.editId || !confirm('Delete this lead? This cannot be undone.')) return;
+  const { error } = await sb.from('ld_leads').delete().eq('id', S.editId);
+  if (error) { $('dlgErr').textContent = error.message; return; }
+  $('dlg').close();
+  await loadData();
+  render();
+  toast('Lead deleted');
+}
+
+/* ---------- Boot ---------- */
+async function boot() {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) {
+    $('app').classList.add('hide');
+    $('auth').classList.remove('hide');
+    setMode(S.mode);
+    return;
+  }
+  if (!(await loadWorkspace(data.session.user))) return;
+  await loadData();
+  $('auth').classList.add('hide');
+  $('app').classList.remove('hide');
+  render();
+}
+
+$('authBtn').onclick = submitAuth;
+$('pass').onkeydown = e => { if (e.key === 'Enter') submitAuth(); };
+$('logout').onclick = async () => { await sb.auth.signOut(); S.ws = null; boot(); };
+$('add').onclick = () => openLead(null);
+$('cancel').onclick = () => $('dlg').close();
+$('save').onclick = saveLead;
+$('del').onclick = deleteLead;
+$('q').oninput = e => { S.q = e.target.value; renderList(); };
+boot();
+</script>
+</body>
+</html>
