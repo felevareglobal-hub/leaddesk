@@ -102,6 +102,9 @@ dialog h2{margin:0 0 14px;font-size:19px}
     <label class="field"><span>Follow-up on</span><input id="f_follow_up_on" type="date"></label>
     <label class="field"><span>Status</span><select id="f_stage"></select></label>
   </div>
+  <label class="field hide" id="wonWrap"><span>Final price (deal won)</span><input id="f_won_price" type="number" min="0" step="any"></label>
+  <label class="field hide" id="lostWrap"><span>Reason for loss</span><input id="f_lost_reason" list="reasons"></label>
+  <datalist id="reasons"><option>Price too high</option><option>Went with competitor</option><option>No budget</option><option>No response</option><option>Item unavailable</option><option>Requirement cancelled</option></datalist>
   <label class="field"><span>Assigned to</span><select id="f_assign"></select></label>
   <label class="field"><span>Source</span><input id="f_source" list="srcs"></label>
   <datalist id="srcs"><option>Website</option><option>Referral</option><option>WhatsApp</option><option>Walk-in</option><option>Instagram</option><option>Phone call</option></datalist>
@@ -222,7 +225,7 @@ function renderList() {
   const rows = S.leads.filter(l => {
     if (S.filter !== 'all' && l.stage_id !== S.filter) return false;
     if (!q) return true;
-    return [l.name, l.phone, l.email, l.source, l.item, l.part_no].some(v => (v || '').toLowerCase().includes(q));
+    return [l.name, l.phone, l.email, l.source, l.item, l.part_no, l.lost_reason].some(v => (v || '').toLowerCase().includes(q));
   });
   if (!rows.length) {
     $('list').innerHTML = '<div class="empty">' + (S.leads.length ? 'No leads match this view.' : 'No leads yet. Select Add lead to enter your first one.') + '</div>';
@@ -232,9 +235,10 @@ function renderList() {
     const st = stageOf(l.stage_id);
     const opts = S.stages.map(s => '<option value="' + s.id + '"' + (s.id === l.stage_id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
     const late = l.follow_up_on && l.follow_up_on < today && st && st.kind === 'open';
+    const outcome = st && st.kind === 'won' && l.won_price != null ? '<br><b style="color:var(--won)">Won at ' + num(l.won_price) + '</b>' : (st && st.kind === 'lost' && l.lost_reason ? '<br><b style="color:var(--lost)">Lost: ' + esc(l.lost_reason) + '</b>' : '');
     return '<div class="row k-' + (st ? st.kind : 'open') + '" data-id="' + l.id + '">' +
       '<div><div class="n">' + esc(l.name) + '</div><div class="s">' + esc([l.item, l.part_no].filter(Boolean).join(' \u00b7 ') || l.phone || l.email || 'No item') + '</div></div>' +
-      '<div class="s">Qty ' + num(l.quantity) + '<br>Quoted ' + num(l.price_quoted) + ' \u00b7 Target ' + num(l.target_price) + '</div>' +
+      '<div class="s">Qty ' + num(l.quantity) + '<br>Quoted ' + num(l.price_quoted) + ' \u00b7 Target ' + num(l.target_price) + outcome + '</div>' +
       '<div><select data-stage="' + l.id + '" aria-label="Status">' + opts + '</select></div>' +
       '<div class="s">' + esc(who(l.assigned_to)) + '<br><span class="' + (late ? 'late' : '') + '">' + (l.follow_up_on ? 'Follow up ' + l.follow_up_on : 'No follow-up') + '</span></div></div>';
   }).join('');
@@ -254,7 +258,9 @@ function render() {
 
 /* ---------- Lead actions ---------- */
 async function changeStage(id, stageId) {
-  const { error } = await sb.from('ld_leads').update({ stage_id: stageId }).eq('id', id);
+  const target = stageOf(stageId);
+  if (target && target.kind !== 'open') { render(); openLead(id, stageId); return; }
+  const { error } = await sb.from('ld_leads').update({ stage_id: stageId, won_price: null, lost_reason: null }).eq('id', id);
   if (error) { toast(error.message); return; }
   const l = S.leads.find(x => x.id === id);
   if (l) l.stage_id = stageId;
@@ -262,7 +268,13 @@ async function changeStage(id, stageId) {
   toast('Stage updated');
 }
 
-function openLead(id) {
+function syncOutcome() {
+  const st = stageOf($('f_stage').value);
+  $('wonWrap').classList.toggle('hide', !st || st.kind !== 'won');
+  $('lostWrap').classList.toggle('hide', !st || st.kind !== 'lost');
+}
+
+function openLead(id, presetStage) {
   S.editId = id || null;
   const l = id ? S.leads.find(x => x.id === id) : null;
   $('dlgTitle').textContent = l ? 'Edit lead' : 'Add lead';
@@ -274,8 +286,10 @@ function openLead(id) {
   $('f_notes').value = l ? l.notes || '' : '';
   $('f_stage').value = l ? l.stage_id : (S.stages[0] ? S.stages[0].id : '');
   $('f_assign').innerHTML = '<option value="">Unassigned</option>' + S.team.map(t => '<option value="' + t.user_id + '">' + esc(t.email) + '</option>').join('');
-  ['item', 'part_no', 'quantity', 'price_quoted', 'target_price', 'follow_up_on'].forEach(k => { $('f_' + k).value = l && l[k] != null ? l[k] : ''; });
+  ['item', 'part_no', 'quantity', 'price_quoted', 'target_price', 'follow_up_on', 'won_price', 'lost_reason'].forEach(k => { $('f_' + k).value = l && l[k] != null ? l[k] : ''; });
   $('f_assign').value = l && l.assigned_to ? l.assigned_to : '';
+  if (presetStage) $('f_stage').value = presetStage;
+  syncOutcome();
   $('del').classList.toggle('hide', !l);
   $('dlgErr').textContent = '';
   $('dlg').showModal();
@@ -284,13 +298,19 @@ function openLead(id) {
 async function saveLead() {
   const name = $('f_name').value.trim();
   if (!name) { $('dlgErr').textContent = 'Enter the lead\u2019s name.'; return; }
+  const st = stageOf($('f_stage').value);
+  const kind = st ? st.kind : 'open';
+  if (kind === 'won' && !$('f_won_price').value) { $('dlgErr').textContent = 'Enter the final price for a won deal.'; return; }
+  if (kind === 'lost' && !$('f_lost_reason').value.trim()) { $('dlgErr').textContent = 'Enter the reason for loss.'; return; }
   const row = {
     name, phone: $('f_phone').value.trim() || null, email: $('f_email').value.trim() || null,
     source: $('f_source').value.trim() || null, stage_id: $('f_stage').value, notes: $('f_notes').value.trim() || null,
     item: $('f_item').value.trim() || null, part_no: $('f_part_no').value.trim() || null,
     quantity: $('f_quantity').value || null, price_quoted: $('f_price_quoted').value || null,
     target_price: $('f_target_price').value || null, follow_up_on: $('f_follow_up_on').value || null,
-    assigned_to: $('f_assign').value || null
+    assigned_to: $('f_assign').value || null,
+    won_price: kind === 'won' ? $('f_won_price').value : null,
+    lost_reason: kind === 'lost' ? $('f_lost_reason').value.trim() : null
   };
   const res = S.editId
     ? await sb.from('ld_leads').update(row).eq('id', S.editId)
@@ -356,6 +376,7 @@ $('q').oninput = e => { S.q = e.target.value; renderList(); };
 $('teamBtn').onclick = () => { renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
 $('teamClose').onclick = () => $('teamDlg').close();
 $('teamAdd').onclick = addMember;
+$('f_stage').onchange = syncOutcome;
 boot();
 </script>
 </body>
