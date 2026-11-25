@@ -43,12 +43,13 @@ main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
 .bar{display:flex;gap:10px;margin-bottom:12px}
 .bar input{flex:1;padding:9px 12px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
 .list{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
-.row{display:grid;grid-template-columns:2.2fr 1.2fr 1.2fr 1fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);border-left:4px solid var(--c,var(--line));cursor:pointer}
+.row{display:grid;grid-template-columns:2fr 1.3fr 1.1fr 1.1fr;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);border-left:4px solid var(--c,var(--line));cursor:pointer}
 .row:last-child{border-bottom:0}
 .row:hover{background:#F8FAFB}
 .row .n{font-weight:600}
 .row .s{color:var(--mute);font-size:13px}
 .row select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
+.late{color:var(--lost);font-weight:600}.two{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}dialog{max-height:92vh;overflow:auto}.mem{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 .empty{padding:36px 16px;text-align:center;color:var(--mute)}
 dialog{border:0;border-radius:12px;padding:22px;width:min(460px,94vw);box-shadow:0 12px 40px #0004}
 dialog::backdrop{background:#13242D88}
@@ -74,7 +75,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
 </section>
 
 <div id="app" class="hide">
-  <header><div><b>LeadDesk</b><span id="wsName"></span></div><button id="logout">Sign out</button></header>
+  <header><div><b>LeadDesk</b><span id="wsName"></span></div><div><button id="teamBtn" class="hide">Team</button> <button id="logout">Sign out</button></div></header>
   <main>
     <div class="pipe" id="pipe"></div>
     <div class="bar">
@@ -87,12 +88,23 @@ dialog h2{margin:0 0 14px;font-size:19px}
 
 <dialog id="dlg">
   <h2 id="dlgTitle">Add lead</h2>
-  <label class="field"><span>Name</span><input id="f_name"></label>
-  <label class="field"><span>Phone</span><input id="f_phone" type="tel"></label>
-  <label class="field"><span>Email</span><input id="f_email" type="email"></label>
+  <label class="field"><span>Customer / company</span><input id="f_name"></label>
+  <div class="two">
+    <label class="field"><span>Phone</span><input id="f_phone" type="tel"></label>
+    <label class="field"><span>Email</span><input id="f_email" type="email"></label>
+  </div>
+  <label class="field"><span>Item</span><input id="f_item"></label>
+  <div class="two">
+    <label class="field"><span>Part No / Model No</span><input id="f_part_no"></label>
+    <label class="field"><span>Quantity</span><input id="f_quantity" type="number" min="0" step="any"></label>
+    <label class="field"><span>Price quoted</span><input id="f_price_quoted" type="number" min="0" step="any"></label>
+    <label class="field"><span>Budget / target price</span><input id="f_target_price" type="number" min="0" step="any"></label>
+    <label class="field"><span>Follow-up on</span><input id="f_follow_up_on" type="date"></label>
+    <label class="field"><span>Status</span><select id="f_stage"></select></label>
+  </div>
+  <label class="field"><span>Assigned to</span><select id="f_assign"></select></label>
   <label class="field"><span>Source</span><input id="f_source" list="srcs"></label>
   <datalist id="srcs"><option>Website</option><option>Referral</option><option>WhatsApp</option><option>Walk-in</option><option>Instagram</option><option>Phone call</option></datalist>
-  <label class="field"><span>Stage</span><select id="f_stage"></select></label>
   <label class="field"><span>Notes</span><textarea id="f_notes" rows="3"></textarea></label>
   <div class="err" id="dlgErr"></div>
   <div class="acts">
@@ -101,6 +113,15 @@ dialog h2{margin:0 0 14px;font-size:19px}
     <button class="btn" id="save">Save lead</button>
   </div>
 </dialog>
+<dialog id="teamDlg">
+  <h2>Team</h2>
+  <div id="teamList"></div>
+  <p style="color:var(--mute);font-size:13px">First create the user in Supabase (Authentication, Users), then add their email here.</p>
+  <label class="field"><span>Email</span><input id="t_email" type="email"></label>
+  <label class="field"><span>Role</span><select id="t_role"><option value="agent">Agent</option><option value="owner">Owner</option></select></label>
+  <div class="err" id="teamErr"></div>
+  <div class="acts"><button class="btn ghost" id="teamClose">Close</button><button class="btn" id="teamAdd">Add to team</button></div>
+</dialog>
 <div id="toast" class="hide"></div>
 
 <script>
@@ -108,7 +129,7 @@ const SUPABASE_URL = 'https://mbmrzyhcjivrbiaayiah.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_NS2LViVIr9dN1UJ_Qjralg_fPdxOnHA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const S = { ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
+const S = { role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
 const $ = id => document.getElementById(id);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c]);
@@ -154,26 +175,29 @@ async function submitAuth() {
 
 /* ---------- Data ---------- */
 async function loadWorkspace(user) {
-  let { data: m } = await sb.from('ld_members').select('workspace_id, ld_workspaces(name)').limit(1);
+  let { data: m } = await sb.from('ld_members').select('workspace_id, role, ld_workspaces(name)').limit(1);
   if (!m || !m.length) {
     const name = (user.user_metadata && user.user_metadata.business) || 'My business';
     const { error } = await sb.rpc('ld_create_workspace', { wname: name });
     if (error) { toast(error.message); return false; }
-    ({ data: m } = await sb.from('ld_members').select('workspace_id, ld_workspaces(name)').limit(1));
+    ({ data: m } = await sb.from('ld_members').select('workspace_id, role, ld_workspaces(name)').limit(1));
   }
   S.ws = m[0].workspace_id;
+  S.role = m[0].role;
   S.wsName = m[0].ld_workspaces ? m[0].ld_workspaces.name : '';
   return true;
 }
 
 async function loadData() {
-  const [st, ld] = await Promise.all([
+  const [st, ld, tm] = await Promise.all([
     sb.from('ld_stages').select('*').eq('workspace_id', S.ws).order('position'),
-    sb.from('ld_leads').select('*').eq('workspace_id', S.ws).order('created_at', { ascending: false })
+    sb.from('ld_leads').select('*').eq('workspace_id', S.ws).order('created_at', { ascending: false }),
+    sb.rpc('ld_team', { wid: S.ws })
   ]);
   if (st.error || ld.error) { toast((st.error || ld.error).message); return; }
   S.stages = st.data;
   S.leads = ld.data;
+  S.team = tm.data || [];
 }
 
 /* ---------- Render ---------- */
@@ -189,12 +213,16 @@ function renderPipe() {
   $('pipe').querySelectorAll('button').forEach(b => b.onclick = () => { S.filter = b.dataset.f; render(); });
 }
 
+const num = v => (v == null || v === '') ? '-' : Number(v).toLocaleString('en-IN');
+const who = id => { const t = S.team.find(x => x.user_id === id); return t ? t.email.split('@')[0] : 'Unassigned'; };
+
 function renderList() {
   const q = S.q.toLowerCase();
+  const today = new Date().toLocaleDateString('en-CA');
   const rows = S.leads.filter(l => {
     if (S.filter !== 'all' && l.stage_id !== S.filter) return false;
     if (!q) return true;
-    return [l.name, l.phone, l.email, l.source].some(v => (v || '').toLowerCase().includes(q));
+    return [l.name, l.phone, l.email, l.source, l.item, l.part_no].some(v => (v || '').toLowerCase().includes(q));
   });
   if (!rows.length) {
     $('list').innerHTML = '<div class="empty">' + (S.leads.length ? 'No leads match this view.' : 'No leads yet. Select Add lead to enter your first one.') + '</div>';
@@ -203,11 +231,12 @@ function renderList() {
   $('list').innerHTML = rows.map(l => {
     const st = stageOf(l.stage_id);
     const opts = S.stages.map(s => '<option value="' + s.id + '"' + (s.id === l.stage_id ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+    const late = l.follow_up_on && l.follow_up_on < today && st && st.kind === 'open';
     return '<div class="row k-' + (st ? st.kind : 'open') + '" data-id="' + l.id + '">' +
-      '<div><div class="n">' + esc(l.name) + '</div><div class="s">' + esc(l.phone || l.email || 'No contact details') + '</div></div>' +
-      '<div class="s">' + esc(l.source || 'No source') + '</div>' +
-      '<div><select data-stage="' + l.id + '" aria-label="Stage">' + opts + '</select></div>' +
-      '<div class="s">' + new Date(l.created_at).toLocaleDateString() + '</div></div>';
+      '<div><div class="n">' + esc(l.name) + '</div><div class="s">' + esc([l.item, l.part_no].filter(Boolean).join(' \u00b7 ') || l.phone || l.email || 'No item') + '</div></div>' +
+      '<div class="s">Qty ' + num(l.quantity) + '<br>Quoted ' + num(l.price_quoted) + ' \u00b7 Target ' + num(l.target_price) + '</div>' +
+      '<div><select data-stage="' + l.id + '" aria-label="Status">' + opts + '</select></div>' +
+      '<div class="s">' + esc(who(l.assigned_to)) + '<br><span class="' + (late ? 'late' : '') + '">' + (l.follow_up_on ? 'Follow up ' + l.follow_up_on : 'No follow-up') + '</span></div></div>';
   }).join('');
   $('list').querySelectorAll('.row').forEach(r => r.onclick = () => openLead(r.dataset.id));
   $('list').querySelectorAll('select[data-stage]').forEach(s => {
@@ -218,6 +247,7 @@ function renderList() {
 
 function render() {
   $('wsName').textContent = S.wsName;
+  $('teamBtn').classList.toggle('hide', S.role !== 'owner');
   renderPipe();
   renderList();
 }
@@ -243,6 +273,9 @@ function openLead(id) {
   $('f_source').value = l ? l.source || '' : '';
   $('f_notes').value = l ? l.notes || '' : '';
   $('f_stage').value = l ? l.stage_id : (S.stages[0] ? S.stages[0].id : '');
+  $('f_assign').innerHTML = '<option value="">Unassigned</option>' + S.team.map(t => '<option value="' + t.user_id + '">' + esc(t.email) + '</option>').join('');
+  ['item', 'part_no', 'quantity', 'price_quoted', 'target_price', 'follow_up_on'].forEach(k => { $('f_' + k).value = l && l[k] != null ? l[k] : ''; });
+  $('f_assign').value = l && l.assigned_to ? l.assigned_to : '';
   $('del').classList.toggle('hide', !l);
   $('dlgErr').textContent = '';
   $('dlg').showModal();
@@ -253,7 +286,11 @@ async function saveLead() {
   if (!name) { $('dlgErr').textContent = 'Enter the lead\u2019s name.'; return; }
   const row = {
     name, phone: $('f_phone').value.trim() || null, email: $('f_email').value.trim() || null,
-    source: $('f_source').value.trim() || null, stage_id: $('f_stage').value, notes: $('f_notes').value.trim() || null
+    source: $('f_source').value.trim() || null, stage_id: $('f_stage').value, notes: $('f_notes').value.trim() || null,
+    item: $('f_item').value.trim() || null, part_no: $('f_part_no').value.trim() || null,
+    quantity: $('f_quantity').value || null, price_quoted: $('f_price_quoted').value || null,
+    target_price: $('f_target_price').value || null, follow_up_on: $('f_follow_up_on').value || null,
+    assigned_to: $('f_assign').value || null
   };
   const res = S.editId
     ? await sb.from('ld_leads').update(row).eq('id', S.editId)
@@ -273,6 +310,23 @@ async function deleteLead() {
   await loadData();
   render();
   toast('Lead deleted');
+}
+
+/* ---------- Team ---------- */
+function renderTeam() {
+  $('teamList').innerHTML = S.team.map(t => '<div class="mem"><span>' + esc(t.email) + '</span><span>' + esc(t.role) + '</span></div>').join('');
+}
+
+async function addMember() {
+  const email = $('t_email').value.trim();
+  if (!email) { $('teamErr').textContent = 'Enter an email.'; return; }
+  const { error } = await sb.rpc('ld_add_member', { wid: S.ws, memail: email, mrole: $('t_role').value });
+  if (error) { $('teamErr').textContent = error.message; return; }
+  $('t_email').value = '';
+  $('teamErr').textContent = '';
+  await loadData();
+  renderTeam();
+  toast('Team member added');
 }
 
 /* ---------- Boot ---------- */
@@ -299,6 +353,9 @@ $('cancel').onclick = () => $('dlg').close();
 $('save').onclick = saveLead;
 $('del').onclick = deleteLead;
 $('q').oninput = e => { S.q = e.target.value; renderList(); };
+$('teamBtn').onclick = () => { renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
+$('teamClose').onclick = () => $('teamDlg').close();
+$('teamAdd').onclick = addMember;
 boot();
 </script>
 </body>
