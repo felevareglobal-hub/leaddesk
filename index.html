@@ -61,6 +61,8 @@ main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
 .tbl{border-collapse:collapse;width:100%;font-size:13px}.tbl th,.tbl td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.tbl th{background:#F4F8F8}
 .bar select{padding:9px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
 @media(max-width:640px){.irow{grid-template-columns:1fr 1fr}}
+.kpi.click{cursor:pointer}.kpi.click:hover{filter:brightness(1.08)}.kpi.sel{outline:3px solid var(--ink);outline-offset:2px}.dtl tr[data-id]{cursor:pointer}.dtl tr[data-id]:hover{background:#F8FAFB}
+.click{cursor:pointer}.lg.click:hover,.hb.click:hover,.mcol small.click:hover{text-decoration:underline}.stack i.click:hover{filter:brightness(1.15)}
 .empty{padding:36px 16px;text-align:center;color:var(--mute)}
 dialog{border:0;border-radius:12px;padding:22px;width:min(620px,94vw);box-shadow:0 12px 40px #0004}
 dialog::backdrop{background:#13242D88}
@@ -126,6 +128,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
   <div class="err" id="dlgErr"></div>
   <div class="acts">
     <button class="btn danger sp hide" id="del">Delete lead</button>
+    <button class="btn ghost" id="wa" type="button">Share on WhatsApp</button>
     <button class="btn ghost" id="cancel">Cancel</button>
     <button class="btn" id="save">Save lead</button>
   </div>
@@ -146,7 +149,7 @@ const SUPABASE_URL = 'https://mbmrzyhcjivrbiaayiah.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_NS2LViVIr9dN1UJ_Qjralg_fPdxOnHA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const S = { view: 'leads', items: [], repY: String(new Date().getFullYear()), repM: '', role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
+const S = { dk: '', view: 'leads', items: [], repY: String(new Date().getFullYear()), repM: '', role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
 const $ = id => document.getElementById(id);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c]);
@@ -387,7 +390,7 @@ const sum = (its, k) => its.reduce((a, i) => a + (Number(i.quantity) || 1) * (Nu
 const kindOf = l => { const s = stageOf(l.stage_id); return s ? s.kind : 'open'; };
 const ym = iso => { const x = new Date(iso); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0'); };
 const nv = v => (v == null || v === '') ? '' : Number(v);
-const kpi = k => '<div class="kpi" style="background-color:' + k[2] + '"><b>' + k[1] + '</b><small>' + esc(k[0]) + '</small></div>';
+const kpi = k => '<div class="kpi' + (k[3] ? ' click' + (S.dk === k[3] ? ' sel' : '') + '" data-k="' + k[3] : '') + '" style="background-color:' + k[2] + '"><b>' + k[1] + '</b><small>' + esc(k[0]) + '</small></div>';
 const itemLine = (its, all) => all
   ? its.map(i => [i.item, i.part_no].filter(Boolean).join(' ')).join(' ')
   : (its.length ? [its[0].item, its[0].part_no].filter(Boolean).join(' \u00b7 ') + (its.length > 1 ? ' +' + (its.length - 1) + ' more' : '') : '');
@@ -416,6 +419,24 @@ function readItems() {
   })).filter(x => x.item || x.part_no || x.quantity || x.price_quoted || x.target_price);
 }
 
+function waMessage(name, items) {
+  const lines = items.map((i, n) => {
+    const q = Number(i.quantity) || 1, pr = Number(i.price_quoted);
+    return (n + 1) + '. ' + ([i.item, i.part_no].filter(Boolean).join(' - ') || 'Item') + ': ' + q + ' x ' + num(pr) + ' = ' + num(q * pr);
+  });
+  return 'Hello ' + name + ',\n\nThank you for your enquiry. Our quotation:\n\n' + lines.join('\n') + '\n\nTotal: ' + num(sum(items, 'price_quoted')) + '\n\nRegards,\n' + S.wsName;
+}
+
+function shareWhatsApp() {
+  const items = readItems().filter(i => i.price_quoted);
+  if (!items.length) { $('dlgErr').textContent = 'Add at least one item with a quoted price to share.'; return; }
+  let ph = $('f_phone').value.replace(/\D/g, '').replace(/^0+/, '');
+  if (!ph) { $('dlgErr').textContent = 'Enter the customer\u2019s phone number first.'; return; }
+  if (ph.length === 10) ph = '91' + ph;
+  $('dlgErr').textContent = '';
+  window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(waMessage($('f_name').value.trim() || 'there', items)), '_blank');
+}
+
 function renderView() {
   document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === S.view));
   $('vLeads').classList.toggle('hide', S.view !== 'leads');
@@ -425,16 +446,54 @@ function renderView() {
   if (S.view === 'rep') renderRep();
 }
 
-function hbars(rows) {
+function hbars(rows, pre) {
   if (!rows.length) return '<div class="s">Nothing to show yet.</div>';
   const mx = Math.max(1, ...rows.map(r => r[1]));
-  return rows.map(r => '<div class="hb"><span>' + esc(r[0]) + '</span><div><i style="width:' + (r[1] / mx * 100) + '%;background:' + r[2] + '"></i></div><b>' + r[1] + '</b></div>').join('');
+  return rows.map(r => '<div class="hb' + (pre ? ' click' : '') + '"' + (pre ? ' data-k="' + esc(pre + r[3]) + '"' : '') + '><span>' + esc(r[0]) + '</span><div><i style="width:' + (r[1] / mx * 100) + '%;background:' + r[2] + '"></i></div><b>' + r[1] + '</b></div>').join('');
 }
 
-function countBy(ls, fn) {
+function countBy(ls, fn, lab) {
   const m = {};
   ls.forEach(l => { const k = fn(l); m[k] = (m[k] || 0) + 1; });
-  return Object.entries(m).sort((a, b) => b[1] - a[1]).map((e, i) => [e[0], e[1], PAL[i % PAL.length]]);
+  return Object.entries(m).sort((a, b) => b[1] - a[1]).map((e, i) => [lab ? lab(e[0]) : e[0], e[1], PAL[i % PAL.length], e[0]]);
+}
+
+function pick(k) {
+  S.dk = S.dk === k ? '' : k;
+  renderDash();
+  const c = $('dkCard');
+  if (c) c.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+function dashDetail(today) {
+  if (!S.dk) return '';
+  const by = k => S.leads.filter(l => kindOf(l) === k);
+  const qv = l => sum(itemsOf(l.id), 'price_quoted');
+  const dyn = () => {
+    const p = S.dk.split(':'), t = p[0], a = p[1], b = p.slice(1).join(':');
+    if (t === 'st') { const s = stageOf(a); return [S.leads.filter(l => l.stage_id === a), 'Status: ' + (s ? s.name : '')]; }
+    if (t === 'mo') {
+      const ls = S.leads.filter(l => ym(l.created_at) === a && (!p[2] || kindOf(l) === p[2]));
+      return [ls, MON[Number(a.slice(5)) - 1] + ' ' + a.slice(0, 4) + (p[2] ? ' (' + p[2] + ')' : ' leads')];
+    }
+    if (t === 'lr') return [by('lost').filter(l => (l.lost_reason || 'No reason') === b), 'Lost: ' + b];
+    if (t === 'tm') return [S.leads.filter(l => (l.assigned_to || 'none') === b), 'Assigned to ' + (b === 'none' ? 'nobody' : who(b))];
+    return [[], ''];
+  };
+  const F = {
+    all: [S.leads, 'All leads'], open: [by('open'), 'Open leads'], won: [by('won'), 'Won deals'], lost: [by('lost'), 'Lost leads'],
+    wonv: [by('won').sort((a, b) => (Number(b.won_price) || 0) - (Number(a.won_price) || 0)), 'Won deals by value'],
+    openv: [by('open').sort((a, b) => qv(b) - qv(a)), 'Open quotes by value'],
+    today: [by('open').filter(l => l.follow_up_on === today), 'Follow-ups due today'],
+    over: [by('open').filter(l => l.follow_up_on && l.follow_up_on < today), 'Overdue follow-ups']
+  }[S.dk] || dyn();
+  const ls = F[0];
+  const rows = ls.map(l => {
+    const st = stageOf(l.stage_id), its = itemsOf(l.id);
+    return '<tr data-id="' + l.id + '"><td>' + new Date(l.created_at).toLocaleDateString('en-GB') + '</td><td><b>' + esc(l.name) + '</b></td><td>' + esc(itemLine(its) || '-') + '</td><td>' + num(qv(l)) + '</td><td>' + esc(st ? st.name : '') + '</td><td>' + esc(l.assigned_to ? who(l.assigned_to) : 'Unassigned') + '</td><td>' + esc(l.follow_up_on || '') + '</td><td>' + (kindOf(l) === 'won' ? num(l.won_price) : esc(l.lost_reason || '')) + '</td></tr>';
+  }).join('');
+  return '<div class="card" id="dkCard"><h3>' + esc(F[1]) + ' (' + ls.length + ') <a id="dkClose" style="float:right;font-weight:400;color:var(--accent);cursor:pointer">Close</a></h3>' +
+    (ls.length ? '<div style="overflow-x:auto"><table class="tbl dtl"><thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Quoted value</th><th>Status</th><th>Assigned to</th><th>Follow-up</th><th>Won price / Lost reason</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">No leads here.</div>') + '</div>';
 }
 
 function renderDash() {
@@ -444,10 +503,10 @@ function renderDash() {
   const lost = S.leads.filter(l => kindOf(l) === 'lost');
   const wonVal = won.reduce((a, l) => a + (Number(l.won_price) || 0), 0);
   const openVal = open.reduce((a, l) => a + sum(itemsOf(l.id), 'price_quoted'), 0);
-  const K = [['Total leads', S.leads.length, '#4F46E5'], ['Open', open.length, '#0EA5E9'], ['Won', won.length, '#16A34A'], ['Lost', lost.length, '#DC2626'],
-    ['Won value', num(wonVal), '#0D9488'], ['Open quotes value', num(openVal), '#D97706'],
-    ['Follow-ups today', open.filter(l => l.follow_up_on === today).length, '#7C3AED'], ['Overdue follow-ups', open.filter(l => l.follow_up_on && l.follow_up_on < today).length, '#EA580C']];
-  const counts = S.stages.map((s, i) => [s.name, S.leads.filter(l => l.stage_id === s.id).length, PAL[i % PAL.length]]);
+  const K = [['Total leads', S.leads.length, '#4F46E5', 'all'], ['Open', open.length, '#0EA5E9', 'open'], ['Won', won.length, '#16A34A', 'won'], ['Lost', lost.length, '#DC2626', 'lost'],
+    ['Won value', num(wonVal), '#0D9488', 'wonv'], ['Open quotes value', num(openVal), '#D97706', 'openv'],
+    ['Follow-ups today', open.filter(l => l.follow_up_on === today).length, '#7C3AED', 'today'], ['Overdue follow-ups', open.filter(l => l.follow_up_on && l.follow_up_on < today).length, '#EA580C', 'over']];
+  const counts = S.stages.map((s, i) => [s.name, S.leads.filter(l => l.stage_id === s.id).length, PAL[i % PAL.length], s.id]);
   const tot = S.leads.length || 1;
   let acc = 0;
   const grad = S.leads.length ? counts.map(c => { const a = acc; acc += c[1] / tot * 100; return c[2] + ' ' + a + '% ' + acc + '%'; }).join(',') : '#E5E7EB 0% 100%';
@@ -456,13 +515,29 @@ function renderDash() {
   for (let i = 5; i >= 0; i--) { const x = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); }
   const byM = months.map(m => { const ls = S.leads.filter(l => ym(l.created_at) === m); return [m, ls.filter(l => kindOf(l) === 'won').length, ls.filter(l => kindOf(l) === 'lost').length, ls.filter(l => kindOf(l) === 'open').length]; });
   const mx = Math.max(1, ...byM.map(r => r[1] + r[2] + r[3]));
-  const bars = byM.map(r => '<div class="mcol"><div class="stack" style="height:' + ((r[1] + r[2] + r[3]) / mx * 100) + '%"><i style="flex:' + r[1] + ';background:#16A34A"></i><i style="flex:' + r[2] + ';background:#DC2626"></i><i style="flex:' + r[3] + ';background:#0EA5E9"></i></div><small>' + MON[Number(r[0].slice(5)) - 1] + '</small></div>').join('');
-  $('vDash').innerHTML = '<div class="kpis">' + K.map(kpi).join('') + '</div>' +
+  const seg = (m, kd, n, c) => '<i class="click" data-k="mo:' + m + ':' + kd + '" title="' + kd + ': ' + n + '" style="flex:' + n + ';background:' + c + '"></i>';
+  const bars = byM.map(r => '<div class="mcol"><div class="stack" style="height:' + ((r[1] + r[2] + r[3]) / mx * 100) + '%">' + seg(r[0], 'won', r[1], '#16A34A') + seg(r[0], 'lost', r[2], '#DC2626') + seg(r[0], 'open', r[3], '#0EA5E9') + '</div><small class="click" data-k="mo:' + r[0] + '">' + MON[Number(r[0].slice(5)) - 1] + '</small></div>').join('');
+  $('vDash').innerHTML = '<div class="kpis">' + K.map(kpi).join('') + '</div>' + dashDetail(today) +
     '<div class="grid2"><div class="card"><h3>Leads by status</h3><div class="dn"><div class="dw" data-t="' + S.leads.length + '"><div style="background:conic-gradient(' + grad + ')"></div></div><div>' +
-    counts.map(c => '<div class="lg"><span class="dot" style="background:' + c[2] + '"></span>' + esc(c[0]) + ': <b>' + c[1] + '</b></div>').join('') + '</div></div></div>' +
+    counts.map(c => '<div class="lg click" data-k="st:' + c[3] + '"><span class="dot" style="background:' + c[2] + '"></span>' + esc(c[0]) + ': <b>' + c[1] + '</b></div>').join('') + '</div></div></div>' +
     '<div class="card"><h3>Last 6 months</h3><div class="mon">' + bars + '</div><div class="lg" style="margin-top:8px"><span class="dot" style="background:#16A34A"></span>Won <span class="dot" style="background:#DC2626;margin-left:10px"></span>Lost <span class="dot" style="background:#0EA5E9;margin-left:10px"></span>Open</div></div></div>' +
-    '<div class="grid2"><div class="card"><h3>Reasons for loss</h3>' + hbars(countBy(lost, l => l.lost_reason || 'No reason')) + '</div>' +
-    '<div class="card"><h3>Leads by team member</h3>' + hbars(countBy(S.leads, l => who(l.assigned_to))) + '</div></div>';
+    '<div class="grid2"><div class="card"><h3>Reasons for loss</h3>' + hbars(countBy(lost, l => l.lost_reason || 'No reason'), 'lr:') + '</div>' +
+    '<div class="card"><h3>Leads by team member</h3>' + hbars(countBy(S.leads, l => l.assigned_to || 'none', k => k === 'none' ? 'Unassigned' : who(k)), 'tm:') + '</div></div>';
+  $('vDash').querySelectorAll('.click[data-k]').forEach(c => c.onclick = () => pick(c.dataset.k));
+  $('vDash').querySelectorAll('.dtl tr[data-id]').forEach(r => r.onclick = () => openLead(r.dataset.id));
+  const dx = $('dkClose');
+  if (dx) dx.onclick = () => { S.dk = ''; renderDash(); };
+  const dw = $('vDash').querySelector('.dw');
+  if (dw) {
+    dw.style.cursor = 'pointer';
+    dw.onclick = e => {
+      const r = dw.getBoundingClientRect(), dx0 = e.clientX - r.left - r.width / 2, dy0 = e.clientY - r.top - r.height / 2;
+      if (Math.hypot(dx0, dy0) < r.width / 2 - 26) return;
+      const ang = (Math.atan2(dy0, dx0) * 180 / Math.PI + 450) % 360;
+      let acc2 = 0;
+      for (const c of counts) { acc2 += c[1] / tot * 360; if (ang < acc2) { pick('st:' + c[3]); return; } }
+    };
+  }
 }
 
 function repData() {
@@ -550,6 +625,7 @@ $('teamClose').onclick = () => $('teamDlg').close();
 $('teamAdd').onclick = addMember;
 $('f_stage').onchange = syncOutcome;
 $('addItem').onclick = () => addItemRow({});
+$('wa').onclick = shareWhatsApp;
 $('tabs').onclick = e => { const b = e.target.closest('button'); if (b) { S.view = b.dataset.v; renderView(); } };
 boot();
 </script>
