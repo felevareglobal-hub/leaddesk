@@ -57,7 +57,7 @@ main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}.lg{font-size:13px;margin-bottom:4px}
 .mon{display:flex;align-items:flex-end;gap:10px;height:160px}.mcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}.stack{width:100%;display:flex;flex-direction:column-reverse;border-radius:6px 6px 0 0;overflow:hidden;min-height:2px}.stack i{display:block}.mcol small{margin-top:6px;color:var(--mute);font-size:12px}
 .hb{display:grid;grid-template-columns:120px 1fr 30px;gap:8px;align-items:center;font-size:13px;margin-bottom:6px}.hb div{background:#EEF2F4;border-radius:4px;height:10px}.hb i{display:block;height:100%;border-radius:4px}
-.irow{display:grid;grid-template-columns:2fr 1.3fr .7fr 1fr 1fr auto;gap:6px;margin-bottom:8px}.irow input{padding:8px;border:1px solid var(--line);border-radius:6px;min-width:0}.irow .x{border:1px solid var(--line);background:#fff;border-radius:6px;width:32px}
+.irow{display:grid;grid-template-columns:2fr 1.3fr .7fr 1fr 1fr .8fr auto;gap:6px;margin-bottom:8px}.irow input{padding:8px;border:1px solid var(--line);border-radius:6px;min-width:0}.irow .x{border:1px solid var(--line);background:#fff;border-radius:6px;width:32px}
 .tbl{border-collapse:collapse;width:100%;font-size:13px}.tbl th,.tbl td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}.tbl th{background:#F4F8F8}
 .bar select{padding:9px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
 @media(max-width:640px){.irow{grid-template-columns:1fr 1fr}}
@@ -114,6 +114,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
   <div style="font-weight:600;margin:4px 0 6px">Items</div>
   <div id="itemRows"></div>
   <button class="btn ghost" id="addItem" type="button" style="margin-bottom:12px">Add item</button>
+  <div id="itemTot" style="margin:-4px 0 12px;font-weight:600;font-size:13px"></div>
   <div class="two">
     <label class="field"><span>Follow-up on</span><input id="f_follow_up_on" type="date"></label>
     <label class="field"><span>Status</span><select id="f_stage"></select></label>
@@ -235,7 +236,7 @@ function renderPipe() {
   $('pipe').querySelectorAll('button').forEach(b => b.onclick = () => { S.filter = b.dataset.f; render(); });
 }
 
-const num = v => (v == null || v === '') ? '-' : Number(v).toLocaleString('en-IN');
+const num = v => (v == null || v === '') ? '-' : Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const who = id => { const t = S.team.find(x => x.user_id === id); return t ? t.email.split('@')[0] : 'Unassigned'; };
 
 function renderList() {
@@ -258,7 +259,7 @@ function renderList() {
     const outcome = st && st.kind === 'won' && l.won_price != null ? '<br><b style="color:var(--won)">Won at ' + num(l.won_price) + '</b>' : (st && st.kind === 'lost' && l.lost_reason ? '<br><b style="color:var(--lost)">Lost: ' + esc(l.lost_reason) + '</b>' : '');
     return '<div class="row k-' + (st ? st.kind : 'open') + '" data-id="' + l.id + '">' +
       '<div><div class="n">' + esc(l.name) + '</div><div class="s">' + esc(itemLine(its) || l.phone || l.email || 'No item') + '</div></div>' +
-      '<div class="s">' + its.length + (its.length === 1 ? ' item' : ' items') + ' \u00b7 Qty ' + num(its.reduce((a, i) => a + (Number(i.quantity) || 0), 0)) + '<br>Quoted ' + num(sum(its, 'price_quoted')) + ' \u00b7 Target ' + num(sum(its, 'target_price')) + outcome + '</div>' +
+      '<div class="s">' + its.length + (its.length === 1 ? ' item' : ' items') + ' \u00b7 Qty ' + num(its.reduce((a, i) => a + (Number(i.quantity) || 0), 0)) + '<br>Quoted ' + num(sum(its, 'price_quoted')) + ' + GST ' + num(gstAmt(its)) + ' \u00b7 Target ' + num(sum(its, 'target_price')) + outcome + '</div>' +
       '<div><select data-stage="' + l.id + '" aria-label="Status">' + opts + '</select></div>' +
       '<div class="s">' + esc(who(l.assigned_to)) + '<br><span class="' + (late ? 'late' : '') + '">' + (l.follow_up_on ? 'Follow up ' + l.follow_up_on : 'No follow-up') + '</span></div></div>';
   }).join('');
@@ -310,6 +311,7 @@ function openLead(id, presetStage) {
   $('itemRows').innerHTML = '';
   const its0 = l ? itemsOf(l.id) : [];
   (its0.length ? its0 : [{}]).forEach(addItemRow);
+  updTot();
   ['follow_up_on', 'won_price', 'lost_reason'].forEach(k => { $('f_' + k).value = l && l[k] != null ? l[k] : ''; });
   $('f_assign').value = l && l.assigned_to ? l.assigned_to : '';
   if (presetStage) $('f_stage').value = presetStage;
@@ -387,6 +389,7 @@ const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct
 const PAL = ['#4F46E5', '#0EA5E9', '#14B8A6', '#F59E0B', '#EC4899', '#8B5CF6', '#22C55E', '#EF4444'];
 const itemsOf = id => S.items.filter(i => i.lead_id === id);
 const sum = (its, k) => its.reduce((a, i) => a + (Number(i.quantity) || 1) * (Number(i[k]) || 0), 0);
+const gstAmt = its => its.reduce((a, i) => a + (Number(i.quantity) || 1) * (Number(i.price_quoted) || 0) * (Number(i.gst_rate) || 0) / 100, 0);
 const kindOf = l => { const s = stageOf(l.stage_id); return s ? s.kind : 'open'; };
 const ym = iso => { const x = new Date(iso); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0'); };
 const nv = v => (v == null || v === '') ? '' : Number(v);
@@ -404,9 +407,16 @@ function addItemRow(it) {
     '<input class="i_qty" type="number" min="0" step="any" placeholder="Qty" value="' + esc(it.quantity) + '">' +
     '<input class="i_quoted" type="number" min="0" step="any" placeholder="Price quoted" value="' + esc(it.price_quoted) + '">' +
     '<input class="i_target" type="number" min="0" step="any" placeholder="Target price" value="' + esc(it.target_price) + '">' +
+    '<input class="i_gst" type="number" min="0" step="any" placeholder="GST %" value="' + esc(it.gst_rate === undefined ? 18 : it.gst_rate) + '">' +
     '<button type="button" class="x" aria-label="Remove item">&times;</button>';
-  d.querySelector('.x').onclick = () => d.remove();
+  d.querySelector('.x').onclick = () => { d.remove(); updTot(); };
   $('itemRows').appendChild(d);
+}
+
+function updTot() {
+  const its = readItems();
+  const sub = sum(its, 'price_quoted'), g = gstAmt(its);
+  $('itemTot').textContent = its.length ? 'Subtotal ' + num(sub) + ' + GST ' + num(g) + ' = Total ' + num(sub + g) : '';
 }
 
 function readItems() {
@@ -415,16 +425,17 @@ function readItems() {
     part_no: d.querySelector('.i_part').value.trim() || null,
     quantity: d.querySelector('.i_qty').value || null,
     price_quoted: d.querySelector('.i_quoted').value || null,
-    target_price: d.querySelector('.i_target').value || null
+    target_price: d.querySelector('.i_target').value || null,
+    gst_rate: d.querySelector('.i_gst').value || null
   })).filter(x => x.item || x.part_no || x.quantity || x.price_quoted || x.target_price);
 }
 
 function waMessage(name, items) {
   const lines = items.map((i, n) => {
     const q = Number(i.quantity) || 1, pr = Number(i.price_quoted);
-    return (n + 1) + '. ' + ([i.item, i.part_no].filter(Boolean).join(' - ') || 'Item') + ': ' + q + ' x ' + num(pr) + ' = ' + num(q * pr);
+    return (n + 1) + '. ' + ([i.item, i.part_no].filter(Boolean).join(' - ') || 'Item') + ': ' + q + ' x ' + num(pr) + ' = ' + num(q * pr) + (Number(i.gst_rate) ? ' (+' + Number(i.gst_rate) + '% GST)' : '');
   });
-  return 'Hello ' + name + ',\n\nThank you for your enquiry. Our quotation:\n\n' + lines.join('\n') + '\n\nTotal: ' + num(sum(items, 'price_quoted')) + '\n\nRegards,\n' + S.wsName;
+  return 'Hello ' + name + ',\n\nThank you for your enquiry. Our quotation:\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + '\n\nRegards,\n' + S.wsName;
 }
 
 function shareWhatsApp() {
@@ -493,7 +504,7 @@ function dashDetail(today) {
     return '<tr data-id="' + l.id + '"><td>' + new Date(l.created_at).toLocaleDateString('en-GB') + '</td><td><b>' + esc(l.name) + '</b></td><td>' + esc(itemLine(its) || '-') + '</td><td>' + num(qv(l)) + '</td><td>' + esc(st ? st.name : '') + '</td><td>' + esc(l.assigned_to ? who(l.assigned_to) : 'Unassigned') + '</td><td>' + esc(l.follow_up_on || '') + '</td><td>' + (kindOf(l) === 'won' ? num(l.won_price) : esc(l.lost_reason || '')) + '</td></tr>';
   }).join('');
   return '<div class="card" id="dkCard"><h3>' + esc(F[1]) + ' (' + ls.length + ') <a id="dkClose" style="float:right;font-weight:400;color:var(--accent);cursor:pointer">Close</a></h3>' +
-    (ls.length ? '<div style="overflow-x:auto"><table class="tbl dtl"><thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Quoted value</th><th>Status</th><th>Assigned to</th><th>Follow-up</th><th>Won price / Lost reason</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">No leads here.</div>') + '</div>';
+    (ls.length ? '<div style="overflow-x:auto"><table class="tbl dtl"><thead><tr><th>Date</th><th>Customer</th><th>Items</th><th>Quoted (excl. GST)</th><th>Status</th><th>Assigned to</th><th>Follow-up</th><th>Won price / Lost reason</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">No leads here.</div>') + '</div>';
 }
 
 function renderDash() {
@@ -548,7 +559,9 @@ function repData() {
     (its.length ? its : [{}]).forEach((it, i) => rows.push({
       'Date': new Date(l.created_at).toLocaleDateString('en-GB'), 'Customer': l.name, 'Phone': l.phone || '', 'Email': l.email || '', 'Source': l.source || '',
       'Item': it.item || '', 'Part / Model No': it.part_no || '', 'Qty': nv(it.quantity), 'Price quoted': nv(it.price_quoted), 'Target price': nv(it.target_price),
-      'Line value': it.price_quoted == null ? '' : (Number(it.quantity) || 1) * Number(it.price_quoted),
+      'Line value (excl. GST)': it.price_quoted == null ? '' : (Number(it.quantity) || 1) * Number(it.price_quoted),
+      'GST %': nv(it.gst_rate), 'GST amount': it.price_quoted == null ? '' : (Number(it.quantity) || 1) * Number(it.price_quoted) * (Number(it.gst_rate) || 0) / 100,
+      'Total incl. GST': it.price_quoted == null ? '' : (Number(it.quantity) || 1) * Number(it.price_quoted) * (1 + (Number(it.gst_rate) || 0) / 100),
       'Status': st ? st.name : '', 'Assigned to': l.assigned_to ? who(l.assigned_to) : '', 'Follow-up on': l.follow_up_on || '',
       'Won price': i === 0 ? nv(l.won_price) : '', 'Lost reason': l.lost_reason || '', 'Notes': l.notes || ''
     }));
@@ -563,7 +576,8 @@ function monthSummary() {
     const won = ls.filter(l => kindOf(l) === 'won');
     return { 'Month': n + ' ' + S.repY, 'Leads': ls.length, 'Won': won.length, 'Won value': won.reduce((a, l) => a + (Number(l.won_price) || 0), 0),
       'Lost': ls.filter(l => kindOf(l) === 'lost').length, 'Open': ls.filter(l => kindOf(l) === 'open').length,
-      'Quoted value': ls.reduce((a, l) => a + sum(itemsOf(l.id), 'price_quoted'), 0) };
+      'Quoted (excl. GST)': ls.reduce((a, l) => a + sum(itemsOf(l.id), 'price_quoted'), 0),
+      'GST': ls.reduce((a, l) => a + gstAmt(itemsOf(l.id)), 0) };
   });
 }
 
@@ -624,7 +638,8 @@ $('teamBtn').onclick = () => { renderTeam(); $('teamErr').textContent = ''; $('t
 $('teamClose').onclick = () => $('teamDlg').close();
 $('teamAdd').onclick = addMember;
 $('f_stage').onchange = syncOutcome;
-$('addItem').onclick = () => addItemRow({});
+$('addItem').onclick = () => { addItemRow({}); updTot(); };
+$('itemRows').oninput = updTot;
 $('wa').onclick = shareWhatsApp;
 $('tabs').onclick = e => { const b = e.target.closest('button'); if (b) { S.view = b.dataset.v; renderView(); } };
 boot();
