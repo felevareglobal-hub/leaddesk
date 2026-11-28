@@ -63,6 +63,7 @@ main{max-width:1000px;margin:0 auto;padding:20px 16px 60px}
 @media(max-width:640px){.irow{grid-template-columns:1fr 1fr}}
 .kpi.click{cursor:pointer}.kpi.click:hover{filter:brightness(1.08)}.kpi.sel{outline:3px solid var(--ink);outline-offset:2px}.dtl tr[data-id]{cursor:pointer}.dtl tr[data-id]:hover{background:#F8FAFB}
 .click{cursor:pointer}.lg.click:hover,.hb.click:hover,.mcol small.click:hover{text-decoration:underline}.stack i.click:hover{filter:brightness(1.15)}
+.mem .btn{padding:4px 10px}.mem select{padding:4px 6px;border:1px solid var(--line);border-radius:6px}.mem>span:last-child{display:flex;gap:6px;align-items:center}
 .empty{padding:36px 16px;text-align:center;color:var(--mute)}
 dialog{border:0;border-radius:12px;padding:22px;width:min(620px,94vw);box-shadow:0 12px 40px #0004}
 dialog::backdrop{background:#13242D88}
@@ -149,11 +150,19 @@ dialog h2{margin:0 0 14px;font-size:19px}
   <div id="ownerPart">
   <label class="field"><span>Company name (shown on WhatsApp quotes)</span><input id="t_company"></label>
   <div class="acts" style="margin:-4px 0 14px"><button class="btn ghost" id="companySave" type="button">Save name</button></div>
+  <h3 style="margin:0 0 6px;font-size:15px">Roles and rights</h3>
+  <div id="roleList" style="overflow-x:auto"></div>
+  <div class="two" style="margin-top:8px">
+    <label class="field"><span>New role name</span><input id="t_newrole"></label>
+    <div style="align-self:end;margin-bottom:12px"><button class="btn ghost" id="roleAdd" type="button">Add role</button></div>
+  </div>
+  </div>
   <h3 style="margin:0 0 6px;font-size:15px">Team</h3>
   <div id="teamList"></div>
+  <div id="addPart">
   <p style="color:var(--mute);font-size:13px">First create the user in Supabase (Authentication, Users), then add their email here.</p>
   <label class="field"><span>Email</span><input id="t_email" type="email"></label>
-  <label class="field"><span>Role</span><select id="t_role"><option value="agent">Agent</option><option value="owner">Owner</option></select></label>
+  <label class="field"><span>Role</span><select id="t_role"></select></label>
   </div>
   <div class="err" id="teamErr"></div>
   <div class="acts"><button class="btn ghost" id="teamClose">Close</button><button class="btn" id="teamAdd">Add to team</button></div>
@@ -165,7 +174,7 @@ const SUPABASE_URL = 'https://mbmrzyhcjivrbiaayiah.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_NS2LViVIr9dN1UJ_Qjralg_fPdxOnHA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const S = { me: '', dk: '', view: 'leads', items: [], repY: String(new Date().getFullYear()), repM: '', role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
+const S = { uid: '', can: {}, roles: [], me: '', dk: '', view: 'leads', items: [], repY: String(new Date().getFullYear()), repM: '', role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
 const $ = id => document.getElementById(id);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c]);
@@ -221,22 +230,26 @@ async function loadWorkspace(user) {
   S.ws = m[0].workspace_id;
   S.role = m[0].role;
   S.me = (user.user_metadata && user.user_metadata.full_name) || '';
+  S.uid = user.id;
   S.wsName = m[0].ld_workspaces ? m[0].ld_workspaces.name : '';
   return true;
 }
 
 async function loadData() {
-  const [st, ld, tm, it] = await Promise.all([
+  const [st, ld, tm, it, rl] = await Promise.all([
     sb.from('ld_stages').select('*').eq('workspace_id', S.ws).order('position'),
     sb.from('ld_leads').select('*').eq('workspace_id', S.ws).order('created_at', { ascending: false }),
     sb.rpc('ld_team', { wid: S.ws }),
-    sb.from('ld_items').select('*').eq('workspace_id', S.ws).order('position')
+    sb.from('ld_items').select('*').eq('workspace_id', S.ws).order('position'),
+    sb.from('ld_roles').select('*').eq('workspace_id', S.ws)
   ]);
   if (st.error || ld.error) { toast((st.error || ld.error).message); return; }
   S.stages = st.data;
   S.leads = ld.data;
   S.team = tm.data || [];
   S.items = it.data || [];
+  S.roles = rl.data && rl.data.length ? rl.data : [{ role: 'agent' }, { role: 'owner' }];
+  S.can = S.roles.find(r => r.role === S.role) || (S.role === 'owner' ? { manage_team: true, add_leads: true, edit_leads: true, delete_leads: true } : { add_leads: true, edit_leads: true, delete_leads: true });
 }
 
 /* ---------- Render ---------- */
@@ -276,7 +289,7 @@ function renderList() {
     return '<div class="row k-' + (st ? st.kind : 'open') + '" data-id="' + l.id + '">' +
       '<div><div class="n">' + esc(l.name) + '</div><div class="s">' + esc(itemLine(its) || l.phone || l.email || 'No item') + '</div></div>' +
       '<div class="s">' + its.length + (its.length === 1 ? ' item' : ' items') + ' \u00b7 Qty ' + num(its.reduce((a, i) => a + (Number(i.quantity) || 0), 0)) + '<br>Quoted ' + num(sum(its, 'price_quoted')) + ' + GST ' + num(gstAmt(its)) + ' \u00b7 Target ' + num(sum(its, 'target_price')) + outcome + '</div>' +
-      '<div><select data-stage="' + l.id + '" aria-label="Status">' + opts + '</select></div>' +
+      '<div><select data-stage="' + l.id + '" aria-label="Status"' + (S.can.edit_leads ? '' : ' disabled') + '>' + opts + '</select></div>' +
       '<div class="s">' + esc(who(l.assigned_to)) + '<br><span class="' + (late ? 'late' : '') + '">' + (l.follow_up_on ? 'Follow up ' + l.follow_up_on : 'No follow-up') + '</span></div></div>';
   }).join('');
   $('list').querySelectorAll('.row').forEach(r => r.onclick = () => openLead(r.dataset.id));
@@ -289,6 +302,7 @@ function renderList() {
 function render() {
   $('wsName').textContent = S.wsName;
   $('teamBtn').classList.remove('hide');
+  $('add').classList.toggle('hide', !S.can.add_leads);
   renderPipe();
   renderList();
   renderView();
@@ -333,7 +347,8 @@ function openLead(id, presetStage) {
   $('f_assign').value = l && l.assigned_to ? l.assigned_to : '';
   if (presetStage) $('f_stage').value = presetStage;
   syncOutcome();
-  $('del').classList.toggle('hide', !l);
+  $('del').classList.toggle('hide', !l || !S.can.delete_leads);
+  $('save').classList.toggle('hide', l ? !S.can.edit_leads : !S.can.add_leads);
   $('dlgErr').textContent = '';
   $('dlg').showModal();
 }
@@ -388,8 +403,91 @@ async function deleteLead() {
 }
 
 /* ---------- Team ---------- */
+const ROLE = { owner: 'Owner', agent: 'User' };
+
+function fitTeamDlg() {
+  const mg = !!S.can.manage_team;
+  $('ownerPart').classList.toggle('hide', !mg);
+  $('teamAdd').classList.toggle('hide', !mg);
+  $('addPart').classList.toggle('hide', !mg);
+  if (mg) renderRoles();
+  $('t_role').innerHTML = S.roles.map(r => '<option value="' + esc(r.role) + '">' + esc(ROLE[r.role] || r.role) + '</option>').join('');
+  $('t_role').value = 'agent';
+}
+
 function renderTeam() {
-  $('teamList').innerHTML = S.team.map(t => '<div class="mem"><span>' + esc(t.email) + '</span><span>' + esc(t.role) + '</span></div>').join('');
+  const mg = !!S.can.manage_team;
+  $('teamList').innerHTML = S.team.map(t => '<div class="mem"><span>' + esc(t.email) + '</span><span>' + (mg
+    ? '<select data-role="' + t.user_id + '" aria-label="Role">' + S.roles.map(r => '<option value="' + esc(r.role) + '"' + (r.role === t.role ? ' selected' : '') + '>' + esc(ROLE[r.role] || r.role) + '</option>').join('') + '</select>' +
+      (t.user_id === S.uid ? '' : ' <button class="btn danger" data-rm="' + t.user_id + '" type="button">Remove</button>')
+    : esc(ROLE[t.role] || t.role)) + '</span></div>').join('');
+  $('teamList').querySelectorAll('select[data-role]').forEach(x => x.onchange = () => setRole(x.dataset.role, x.value));
+  $('teamList').querySelectorAll('button[data-rm]').forEach(b => b.onclick = () => removeMember(b.dataset.rm));
+}
+
+const RIGHTS = [['manage_team', 'Manage team'], ['add_leads', 'Add leads'], ['edit_leads', 'Edit leads'], ['delete_leads', 'Delete leads']];
+
+function renderRoles() {
+  $('roleList').innerHTML = '<table class="tbl"><thead><tr><th>Role</th>' + RIGHTS.map(g => '<th>' + g[1] + '</th>').join('') + '<th></th></tr></thead><tbody>' +
+    S.roles.map(r => '<tr><td><b>' + esc(ROLE[r.role] || r.role) + '</b></td>' +
+      RIGHTS.map(g => '<td><input type="checkbox" data-rn="' + esc(r.role) + '" data-right="' + g[0] + '"' + (r[g[0]] ? ' checked' : '') + (r.role === 'owner' && g[0] === 'manage_team' ? ' disabled' : '') + ' aria-label="' + esc((ROLE[r.role] || r.role) + ': ' + g[1]) + '"></td>').join('') +
+      '<td>' + (r.role === 'owner' || r.role === 'agent' ? '' : '<button class="btn danger" data-delrole="' + esc(r.role) + '" type="button">Delete</button>') + '</td></tr>').join('') + '</tbody></table>';
+  $('roleList').querySelectorAll('input[data-rn]').forEach(x => x.onchange = () => saveRights(x.dataset.rn, x.dataset.right, x.checked));
+  $('roleList').querySelectorAll('button[data-delrole]').forEach(b => b.onclick = () => deleteRole(b.dataset.delrole));
+}
+
+async function saveRights(role, right, val) {
+  const r = S.roles.find(x => x.role === role) || {};
+  const v = { manage_team: !!r.manage_team, add_leads: !!r.add_leads, edit_leads: !!r.edit_leads, delete_leads: !!r.delete_leads };
+  v[right] = val;
+  const { error } = await sb.rpc('ld_save_role', { wid: S.ws, rname: role, p_manage: v.manage_team, p_add: v.add_leads, p_edit: v.edit_leads, p_delete: v.delete_leads });
+  $('teamErr').textContent = error ? error.message : '';
+  await boot();
+  fitTeamDlg();
+  renderTeam();
+  if (!error) toast('Rights updated');
+}
+
+async function addRole() {
+  const name = $('t_newrole').value.trim();
+  if (!name) { $('teamErr').textContent = 'Enter a role name.'; return; }
+  if (S.roles.some(r => r.role.toLowerCase() === name.toLowerCase())) { $('teamErr').textContent = 'That role already exists.'; return; }
+  const { error } = await sb.rpc('ld_save_role', { wid: S.ws, rname: name, p_manage: false, p_add: false, p_edit: false, p_delete: false });
+  $('teamErr').textContent = error ? error.message : '';
+  if (error) return;
+  $('t_newrole').value = '';
+  await boot();
+  fitTeamDlg();
+  renderTeam();
+  toast('Role added. Tick the rights it should have.');
+}
+
+async function deleteRole(role) {
+  if (!confirm('Delete the role ' + role + '?')) return;
+  const { error } = await sb.rpc('ld_delete_role', { wid: S.ws, rname: role });
+  $('teamErr').textContent = error ? error.message : '';
+  await boot();
+  fitTeamDlg();
+  renderTeam();
+  if (!error) toast('Role deleted');
+}
+
+async function setRole(uid, role) {
+  const { error } = await sb.rpc('ld_set_role', { wid: S.ws, uid: uid, newrole: role });
+  $('teamErr').textContent = error ? error.message : '';
+  await boot();
+  fitTeamDlg();
+  renderTeam();
+  if (!error) toast('Role updated');
+}
+
+async function removeMember(uid) {
+  if (!confirm('Remove this person from the organisation? Their leads stay and become unassigned.')) return;
+  const { error } = await sb.rpc('ld_remove_member', { wid: S.ws, uid: uid });
+  $('teamErr').textContent = error ? error.message : '';
+  await boot();
+  renderTeam();
+  if (!error) toast('Person removed');
 }
 
 async function saveMe() {
@@ -676,11 +774,12 @@ $('cancel').onclick = () => $('dlg').close();
 $('save').onclick = saveLead;
 $('del').onclick = deleteLead;
 $('q').oninput = e => { S.q = e.target.value; renderList(); };
-$('teamBtn').onclick = () => { $('t_company').value = S.wsName; $('t_me').value = S.me; const own = S.role === 'owner'; $('ownerPart').classList.toggle('hide', !own); $('teamAdd').classList.toggle('hide', !own); renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
+$('teamBtn').onclick = () => { $('t_company').value = S.wsName; $('t_me').value = S.me; fitTeamDlg(); renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
 $('teamClose').onclick = () => $('teamDlg').close();
 $('teamAdd').onclick = addMember;
 $('companySave').onclick = saveCompany;
 $('meSave').onclick = saveMe;
+$('roleAdd').onclick = addRole;
 $('f_stage').onchange = syncOutcome;
 $('addItem').onclick = () => { addItemRow({}); updTot(); };
 $('itemRows').oninput = updTot;
