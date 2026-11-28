@@ -115,6 +115,14 @@ dialog h2{margin:0 0 14px;font-size:19px}
   <div id="itemRows"></div>
   <button class="btn ghost" id="addItem" type="button" style="margin-bottom:12px">Add item</button>
   <div id="itemTot" style="margin:-4px 0 12px;font-weight:600;font-size:13px"></div>
+  <div style="font-weight:600;margin:4px 0 6px">Quotation terms</div>
+  <div class="two">
+    <label class="field"><span>Payment terms</span><input id="f_pay_terms"></label>
+    <label class="field"><span>Delivery time</span><input id="f_delivery"></label>
+    <label class="field"><span>Warranty</span><input id="f_warranty"></label>
+    <label class="field"><span>Validity</span><input id="f_validity"></label>
+  </div>
+  <label class="field"><span>Additional remarks (shown on quote)</span><textarea id="f_remarks" rows="2"></textarea></label>
   <div class="two">
     <label class="field"><span>Follow-up on</span><input id="f_follow_up_on" type="date"></label>
     <label class="field"><span>Status</span><select id="f_stage"></select></label>
@@ -125,7 +133,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
   <label class="field"><span>Assigned to</span><select id="f_assign"></select></label>
   <label class="field"><span>Source</span><input id="f_source" list="srcs"></label>
   <datalist id="srcs"><option>Website</option><option>Referral</option><option>WhatsApp</option><option>Walk-in</option><option>Instagram</option><option>Phone call</option></datalist>
-  <label class="field"><span>Notes</span><textarea id="f_notes" rows="3"></textarea></label>
+  <label class="field"><span>Notes (internal, not sent)</span><textarea id="f_notes" rows="3"></textarea></label>
   <div class="err" id="dlgErr"></div>
   <div class="acts">
     <button class="btn danger sp hide" id="del">Delete lead</button>
@@ -315,7 +323,8 @@ function openLead(id, presetStage) {
   const its0 = l ? itemsOf(l.id) : [];
   (its0.length ? its0 : [{}]).forEach(addItemRow);
   updTot();
-  ['follow_up_on', 'won_price', 'lost_reason'].forEach(k => { $('f_' + k).value = l && l[k] != null ? l[k] : ''; });
+  ['follow_up_on', 'won_price', 'lost_reason', 'pay_terms', 'delivery', 'warranty', 'validity', 'remarks'].forEach(k => { $('f_' + k).value = l && l[k] != null ? l[k] : ''; });
+  if (!l && S.leads[0]) ['pay_terms', 'delivery', 'warranty', 'validity'].forEach(k => { $('f_' + k).value = S.leads[0][k] || ''; });
   $('f_assign').value = l && l.assigned_to ? l.assigned_to : '';
   if (presetStage) $('f_stage').value = presetStage;
   syncOutcome();
@@ -336,6 +345,9 @@ async function saveLead() {
     source: $('f_source').value.trim() || null, stage_id: $('f_stage').value, notes: $('f_notes').value.trim() || null,
     follow_up_on: $('f_follow_up_on').value || null,
     assigned_to: $('f_assign').value || null,
+    pay_terms: $('f_pay_terms').value.trim() || null, delivery: $('f_delivery').value.trim() || null,
+    warranty: $('f_warranty').value.trim() || null, validity: $('f_validity').value.trim() || null,
+    remarks: $('f_remarks').value.trim() || null,
     won_price: kind === 'won' ? $('f_won_price').value : null,
     lost_reason: kind === 'lost' ? $('f_lost_reason').value.trim() : null
   };
@@ -444,12 +456,12 @@ function readItems() {
   })).filter(x => x.item || x.part_no || x.quantity || x.price_quoted || x.target_price);
 }
 
-function waMessage(name, items) {
+function waMessage(name, items, terms) {
   const lines = items.map((i, n) => {
     const q = Number(i.quantity) || 1, pr = Number(i.price_quoted);
     return (n + 1) + '. ' + ([i.item, i.part_no].filter(Boolean).join(' - ') || 'Item') + ': ' + q + ' x ' + num(pr) + ' = ' + num(q * pr) + (Number(i.gst_rate) ? ' (+' + Number(i.gst_rate) + '% GST)' : '');
   });
-  return 'Hello ' + name + ',\n\nThank you for your enquiry. Here is our quotation from ' + S.wsName + ':\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + '\n\nRegards,\n' + S.wsName;
+  return 'Hello ' + name + ',\n\nThank you for your enquiry. Here is our quotation from ' + S.wsName + ':\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + (terms && terms.length ? '\n\nTerms:\n' + terms.map(t => t[0] + ': ' + t[1]).join('\n') : '') + '\n\nRegards,\n' + S.wsName;
 }
 
 function shareWhatsApp() {
@@ -459,7 +471,9 @@ function shareWhatsApp() {
   if (!ph) { $('dlgErr').textContent = 'Enter the customer\u2019s phone number first.'; return; }
   if (ph.length === 10) ph = '91' + ph;
   $('dlgErr').textContent = '';
-  window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(waMessage($('f_name').value.trim() || 'there', items)), '_blank');
+  const tl = [['Payment terms', 'f_pay_terms'], ['Delivery time', 'f_delivery'], ['Warranty', 'f_warranty'], ['Validity', 'f_validity'], ['Additional remarks', 'f_remarks']]
+    .map(t => [t[0], $(t[1]).value.trim()]).filter(t => t[1]);
+  window.open('https://wa.me/' + ph + '?text=' + encodeURIComponent(waMessage($('f_name').value.trim() || 'there', items, tl)), '_blank');
 }
 
 function renderView() {
@@ -577,7 +591,7 @@ function repData() {
       'GST %': nv(it.gst_rate), 'GST amount': it.price_quoted == null ? '' : (Number(it.quantity) || 1) * Number(it.price_quoted) * (Number(it.gst_rate) || 0) / 100,
       'Total incl. GST': it.price_quoted == null ? '' : (Number(it.quantity) || 1) * Number(it.price_quoted) * (1 + (Number(it.gst_rate) || 0) / 100),
       'Status': st ? st.name : '', 'Assigned to': l.assigned_to ? who(l.assigned_to) : '', 'Follow-up on': l.follow_up_on || '',
-      'Won price': i === 0 ? nv(l.won_price) : '', 'Lost reason': l.lost_reason || '', 'Notes': l.notes || ''
+      'Won price': i === 0 ? nv(l.won_price) : '', 'Lost reason': l.lost_reason || '', 'Notes': l.notes || '', 'Payment terms': l.pay_terms || '', 'Delivery time': l.delivery || '', 'Warranty': l.warranty || '', 'Validity': l.validity || '', 'Additional remarks': l.remarks || ''
     }));
   });
   return { ls, rows };
