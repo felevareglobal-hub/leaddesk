@@ -89,7 +89,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
 </section>
 
 <div id="app" class="hide">
-  <header><div><b>LeadDesk</b><span id="wsName"></span></div><div><button id="teamBtn" class="hide">Team</button> <button id="logout">Sign out</button></div></header>
+  <header><div><b>LeadDesk</b><span id="wsName"></span></div><div><button id="teamBtn" class="hide">Settings</button> <button id="logout">Sign out</button></div></header>
   <main>
     <nav class="tabs" id="tabs"><button data-v="leads">Leads</button><button data-v="dash">Dashboard</button><button data-v="rep">Reports</button></nav>
     <div id="vDash" class="hide"></div><div id="vRep" class="hide"></div>
@@ -135,7 +135,10 @@ dialog h2{margin:0 0 14px;font-size:19px}
   </div>
 </dialog>
 <dialog id="teamDlg">
-  <h2>Team</h2>
+  <h2>Settings</h2>
+  <label class="field"><span>Company name (shown on WhatsApp quotes)</span><input id="t_company"></label>
+  <div class="acts" style="margin:-4px 0 14px"><button class="btn ghost" id="companySave" type="button">Save name</button></div>
+  <h3 style="margin:0 0 6px;font-size:15px">Team</h3>
   <div id="teamList"></div>
   <p style="color:var(--mute);font-size:13px">First create the user in Supabase (Authentication, Users), then add their email here.</p>
   <label class="field"><span>Email</span><input id="t_email" type="email"></label>
@@ -372,6 +375,17 @@ function renderTeam() {
   $('teamList').innerHTML = S.team.map(t => '<div class="mem"><span>' + esc(t.email) + '</span><span>' + esc(t.role) + '</span></div>').join('');
 }
 
+async function saveCompany() {
+  const name = $('t_company').value.trim();
+  if (!name) { $('teamErr').textContent = 'Enter a company name.'; return; }
+  const { error } = await sb.rpc('ld_rename_workspace', { wid: S.ws, wname: name });
+  if (error) { $('teamErr').textContent = error.message; return; }
+  S.wsName = name;
+  $('teamErr').textContent = '';
+  $('wsName').textContent = name;
+  toast('Company name saved');
+}
+
 async function addMember() {
   const email = $('t_email').value.trim();
   if (!email) { $('teamErr').textContent = 'Enter an email.'; return; }
@@ -435,7 +449,7 @@ function waMessage(name, items) {
     const q = Number(i.quantity) || 1, pr = Number(i.price_quoted);
     return (n + 1) + '. ' + ([i.item, i.part_no].filter(Boolean).join(' - ') || 'Item') + ': ' + q + ' x ' + num(pr) + ' = ' + num(q * pr) + (Number(i.gst_rate) ? ' (+' + Number(i.gst_rate) + '% GST)' : '');
   });
-  return 'Hello ' + name + ',\n\nThank you for your enquiry. Our quotation:\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + '\n\nRegards,\n' + S.wsName;
+  return 'Hello ' + name + ',\n\nThank you for your enquiry. Here is our quotation from ' + S.wsName + ':\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + '\n\nRegards,\n' + S.wsName;
 }
 
 function shareWhatsApp() {
@@ -634,9 +648,10 @@ $('cancel').onclick = () => $('dlg').close();
 $('save').onclick = saveLead;
 $('del').onclick = deleteLead;
 $('q').oninput = e => { S.q = e.target.value; renderList(); };
-$('teamBtn').onclick = () => { renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
+$('teamBtn').onclick = () => { $('t_company').value = S.wsName; renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
 $('teamClose').onclick = () => $('teamDlg').close();
 $('teamAdd').onclick = addMember;
+$('companySave').onclick = saveCompany;
 $('f_stage').onchange = syncOutcome;
 $('addItem').onclick = () => { addItemRow({}); updTot(); };
 $('itemRows').oninput = updTot;
