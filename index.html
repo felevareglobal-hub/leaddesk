@@ -144,6 +144,9 @@ dialog h2{margin:0 0 14px;font-size:19px}
 </dialog>
 <dialog id="teamDlg">
   <h2>Settings</h2>
+  <label class="field"><span>Your name (shown on quotes you send)</span><input id="t_me" autocomplete="name"></label>
+  <div class="acts" style="margin:-4px 0 14px"><button class="btn ghost" id="meSave" type="button">Save my name</button></div>
+  <div id="ownerPart">
   <label class="field"><span>Company name (shown on WhatsApp quotes)</span><input id="t_company"></label>
   <div class="acts" style="margin:-4px 0 14px"><button class="btn ghost" id="companySave" type="button">Save name</button></div>
   <h3 style="margin:0 0 6px;font-size:15px">Team</h3>
@@ -151,6 +154,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
   <p style="color:var(--mute);font-size:13px">First create the user in Supabase (Authentication, Users), then add their email here.</p>
   <label class="field"><span>Email</span><input id="t_email" type="email"></label>
   <label class="field"><span>Role</span><select id="t_role"><option value="agent">Agent</option><option value="owner">Owner</option></select></label>
+  </div>
   <div class="err" id="teamErr"></div>
   <div class="acts"><button class="btn ghost" id="teamClose">Close</button><button class="btn" id="teamAdd">Add to team</button></div>
 </dialog>
@@ -161,7 +165,7 @@ const SUPABASE_URL = 'https://mbmrzyhcjivrbiaayiah.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_NS2LViVIr9dN1UJ_Qjralg_fPdxOnHA';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const S = { dk: '', view: 'leads', items: [], repY: String(new Date().getFullYear()), repM: '', role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
+const S = { me: '', dk: '', view: 'leads', items: [], repY: String(new Date().getFullYear()), repM: '', role: '', team: [], ws: null, wsName: '', stages: [], leads: [], filter: 'all', q: '', editId: null, mode: 'login' };
 const $ = id => document.getElementById(id);
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c]);
@@ -216,6 +220,7 @@ async function loadWorkspace(user) {
   }
   S.ws = m[0].workspace_id;
   S.role = m[0].role;
+  S.me = (user.user_metadata && user.user_metadata.full_name) || '';
   S.wsName = m[0].ld_workspaces ? m[0].ld_workspaces.name : '';
   return true;
 }
@@ -283,7 +288,7 @@ function renderList() {
 
 function render() {
   $('wsName').textContent = S.wsName;
-  $('teamBtn').classList.toggle('hide', S.role !== 'owner');
+  $('teamBtn').classList.remove('hide');
   renderPipe();
   renderList();
   renderView();
@@ -387,6 +392,15 @@ function renderTeam() {
   $('teamList').innerHTML = S.team.map(t => '<div class="mem"><span>' + esc(t.email) + '</span><span>' + esc(t.role) + '</span></div>').join('');
 }
 
+async function saveMe() {
+  const name = $('t_me').value.trim();
+  const { error } = await sb.auth.updateUser({ data: { full_name: name } });
+  if (error) { $('teamErr').textContent = error.message; return; }
+  S.me = name;
+  $('teamErr').textContent = '';
+  toast('Name saved');
+}
+
 async function saveCompany() {
   const name = $('t_company').value.trim();
   if (!name) { $('teamErr').textContent = 'Enter a company name.'; return; }
@@ -461,7 +475,7 @@ function waMessage(name, items, terms) {
     const q = Number(i.quantity) || 1, pr = Number(i.price_quoted);
     return (n + 1) + '. ' + ([i.item, i.part_no].filter(Boolean).join(' - ') || 'Item') + ': ' + q + ' x ' + num(pr) + ' = ' + num(q * pr) + (Number(i.gst_rate) ? ' (+' + Number(i.gst_rate) + '% GST)' : '');
   });
-  return 'Hello ' + name + ',\n\nThank you for your enquiry. Here is our quotation from ' + S.wsName + ':\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + (terms && terms.length ? '\n\nTerms:\n' + terms.map(t => t[0] + ': ' + t[1]).join('\n') : '') + '\n\nRegards,\n' + S.wsName;
+  return 'Hello ' + name + ',\n\nThank you for your enquiry. Here is our quotation from ' + S.wsName + ':\n\n' + lines.join('\n') + '\n\nSubtotal: ' + num(sum(items, 'price_quoted')) + '\nGST: ' + num(gstAmt(items)) + '\nTotal (incl. GST): ' + num(sum(items, 'price_quoted') + gstAmt(items)) + (terms && terms.length ? '\n\nTerms:\n' + terms.map(t => t[0] + ': ' + t[1]).join('\n') : '') + '\n\nRegards,\n' + (S.me ? S.me + '\n' : '') + S.wsName;
 }
 
 function shareWhatsApp() {
@@ -662,10 +676,11 @@ $('cancel').onclick = () => $('dlg').close();
 $('save').onclick = saveLead;
 $('del').onclick = deleteLead;
 $('q').oninput = e => { S.q = e.target.value; renderList(); };
-$('teamBtn').onclick = () => { $('t_company').value = S.wsName; renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
+$('teamBtn').onclick = () => { $('t_company').value = S.wsName; $('t_me').value = S.me; const own = S.role === 'owner'; $('ownerPart').classList.toggle('hide', !own); $('teamAdd').classList.toggle('hide', !own); renderTeam(); $('teamErr').textContent = ''; $('teamDlg').showModal(); };
 $('teamClose').onclick = () => $('teamDlg').close();
 $('teamAdd').onclick = addMember;
 $('companySave').onclick = saveCompany;
+$('meSave').onclick = saveMe;
 $('f_stage').onchange = syncOutcome;
 $('addItem').onclick = () => { addItemRow({}); updTot(); };
 $('itemRows').oninput = updTot;
