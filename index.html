@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LeadDesk</title>
+<title>Lynco</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -79,7 +79,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
 <body>
 
 <section id="auth" class="hide">
-  <h1>LeadDesk</h1>
+  <h1>Lynco</h1>
   <p id="authSub">Sign in to your workspace.</p>
   <label class="field hide" id="bizWrap"><span>Business name</span><input id="biz" autocomplete="organization"></label>
   <label class="field"><span>Email</span><input id="email" type="email" autocomplete="email"></label>
@@ -90,7 +90,7 @@ dialog h2{margin:0 0 14px;font-size:19px}
 </section>
 
 <div id="app" class="hide">
-  <header><div><b>LeadDesk</b><span id="wsName"></span></div><div><button id="teamBtn" class="hide">Settings</button> <button id="logout">Sign out</button></div></header>
+  <header><div><b>Lynco</b><span id="wsName"></span></div><div><button id="teamBtn" class="hide">Settings</button> <button id="logout">Sign out</button></div></header>
   <main>
     <nav class="tabs" id="tabs"><button data-v="leads">Leads</button><button data-v="dash">Dashboard</button><button data-v="rep">Reports</button></nav>
     <div id="vDash" class="hide"></div><div id="vRep" class="hide"></div>
@@ -747,7 +747,7 @@ function exportXlsx() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthSummary()), 'Month-wise');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Details');
-  XLSX.writeFile(wb, 'LeadDesk_' + S.wsName.replace(/\W+/g, '_') + '_' + S.repY + (S.repM ? '-' + S.repM : '') + '.xlsx');
+  XLSX.writeFile(wb, 'Lynco_' + S.wsName.replace(/\W+/g, '_') + '_' + S.repY + (S.repM ? '-' + S.repM : '') + '.xlsx');
 }
 
 /* ---------- Boot ---------- */
